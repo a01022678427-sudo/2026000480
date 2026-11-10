@@ -1,0 +1,1199 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>학과 공지 및 의견 공유 게시판</title>
+  
+  <!-- Pretendard 폰트 & Tailwind CSS CDN -->
+  <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Pretendard', 'sans-serif'] },
+          colors: { brand: { 50: '#eff6ff', 100: '#dbeafe', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8' } }
+        }
+      }
+    }
+  </script>
+
+  <!-- FontAwesome 아이콘 & Supabase JS SDK (CDN) -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    body { font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif; }
+    .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col antialiased">
+
+  <!-- ==================== 상단 헤더 ==================== -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      
+      <!-- 로고 및 게시판 이름 -->
+      <div class="flex items-center space-x-3 cursor-pointer" onclick="resetFilters()">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-700 to-brand-500 flex items-center justify-center text-white shadow-md shadow-brand-500/20">
+          <i class="fa-solid fa-graduation-cap text-lg"></i>
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <h1 class="text-lg font-bold text-slate-900 tracking-tight">학과 통합 게시판</h1>
+            <span id="connBadge" class="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+              <span class="w-1.5 h-1.5 rounded-full bg-amber-500 mr-1.5 animate-pulse"></span>
+              로컬 저장 모드
+            </span>
+          </div>
+          <p class="text-xs text-slate-500">공지사항 확인 및 구성원 질문·의견 공유</p>
+        </div>
+      </div>
+
+      <!-- 우측 컨트롤 (설정 & 인증) -->
+      <div class="flex items-center space-x-3">
+        <button id="btnOpenConfig" title="Supabase 연동 설정" class="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors">
+          <i class="fa-solid fa-gear text-base"></i>
+        </button>
+
+        <div id="authContainer" class="flex items-center space-x-2">
+          <!-- 비로그인 상태 UI -->
+          <div id="loggedOutView" class="flex items-center space-x-2">
+            <button onclick="openLoginModal()" class="text-sm font-medium text-slate-600 hover:text-brand-600 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors">
+              로그인
+            </button>
+            <button onclick="openSignupModal()" class="text-sm font-medium bg-brand-600 hover:bg-brand-700 text-white px-3.5 py-1.5 rounded-lg shadow-sm transition-colors">
+              회원가입
+            </button>
+          </div>
+
+          <!-- 로그인 상태 UI -->
+          <div id="loggedInView" class="hidden flex items-center space-x-3">
+            <div class="flex items-center space-x-2 text-sm bg-slate-100 py-1 px-3 rounded-full border border-slate-200">
+              <i class="fa-regular fa-user text-slate-500"></i>
+              <span id="userNameDisplay" class="font-semibold text-slate-800">사용자</span>
+              <span id="adminBadge" class="hidden inline-flex items-center px-2 py-0.2 rounded-full text-[11px] font-bold bg-purple-100 text-purple-700 border border-purple-200">
+                <i class="fa-solid fa-crown text-[9px] mr-1"></i> 관리자
+              </span>
+            </div>
+            <button id="btnLogout" class="text-xs text-slate-500 hover:text-rose-600 font-medium px-2 py-1 hover:bg-rose-50 rounded transition-colors">
+              로그아웃
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ==================== 메인 콘텐츠 ==================== -->
+  <main class="max-w-6xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 flex flex-col space-y-6">
+
+    <!-- Supabase 연동 안내 배너 -->
+    <div id="supabaseNoticeBanner" class="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-4 sm:p-5 text-blue-900 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div class="flex items-start space-x-3">
+        <div class="p-2 bg-blue-100 text-blue-600 rounded-xl mt-0.5">
+          <i class="fa-solid fa-cloud-bolt text-lg"></i>
+        </div>
+        <div>
+          <h3 class="font-bold text-sm sm:text-base">게시판 데이터 영구 저장 활성화</h3>
+          <p class="text-xs sm:text-sm text-blue-700 mt-0.5">
+            현재 <strong>브라우저 영구 저장소</strong>에 안전하게 보존되고 있습니다. 클라우드 Supabase DB와 실시간 연동하시려면 우측 버튼을 눌러 연동해 주세요.
+          </p>
+        </div>
+      </div>
+      <div class="flex items-center space-x-2 shrink-0">
+        <button onclick="openConfigModal()" class="text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-2 rounded-lg transition-colors shadow-xs">
+          <i class="fa-solid fa-key mr-1.5"></i>Supabase 연동하기
+        </button>
+      </div>
+    </div>
+
+    <!-- 1. 새로운 소식 (상단 고정 주요 공지사항 배너) -->
+    <div id="pinnedBannerSection" class="hidden bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-4 shadow-xs">
+      <div class="flex items-center justify-between mb-2">
+        <div class="flex items-center space-x-2 text-amber-900 font-bold text-sm">
+          <i class="fa-solid fa-bullhorn text-amber-600 animate-bounce"></i>
+          <span>주요 공지사항 (새로운 소식)</span>
+        </div>
+        <span class="text-xs text-amber-700 font-medium">필독 안내</span>
+      </div>
+      <div id="pinnedBannerList" class="space-y-2"></div>
+    </div>
+
+    <!-- 툴바 영역: 카테고리 탭, 검색, 글쓰기 버튼 -->
+    <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between">
+      
+      <!-- 카테고리 필터 탭 -->
+      <div class="flex items-center space-x-1.5 overflow-x-auto pb-1 md:pb-0 custom-scrollbar">
+        <button onclick="selectCategory('ALL')" data-category="ALL" class="cat-tab px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-brand-600 text-white shadow-xs transition-colors">
+          전체보기
+        </button>
+        <button onclick="selectCategory('NOTICE')" data-category="NOTICE" class="cat-tab px-3.5 py-1.5 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors">
+          📢 공지사항
+        </button>
+        <button onclick="selectCategory('QUESTION')" data-category="QUESTION" class="cat-tab px-3.5 py-1.5 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors">
+          ❓ 질문
+        </button>
+        <button onclick="selectCategory('GENERAL')" data-category="GENERAL" class="cat-tab px-3.5 py-1.5 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors">
+          💬 자유·의견
+        </button>
+      </div>
+
+      <!-- 5. 과거 글 검색 및 2. 질문/의견 올리기(새 글 작성) 버튼 -->
+      <div class="flex flex-col sm:flex-row items-center gap-2.5">
+        <div class="relative w-full sm:w-72 flex items-center">
+          <input 
+            type="text" 
+            id="searchInput" 
+            placeholder="제목, 내용, 작성자 검색..." 
+            class="w-full pl-9 pr-8 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-brand-500 focus:bg-white transition-all"
+          />
+          <i class="fa-solid fa-magnifying-glass absolute left-3 text-slate-400 text-xs"></i>
+          <button id="btnClearSearch" class="hidden absolute right-3 text-slate-400 hover:text-slate-600 text-xs">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+
+        <button 
+          onclick="openCreatePostModal()" 
+          class="w-full sm:w-auto shrink-0 inline-flex items-center justify-center space-x-2 bg-brand-600 hover:bg-brand-700 active:bg-brand-800 text-white px-4 py-2 rounded-xl text-xs font-semibold shadow-xs hover:shadow-md transition-all"
+        >
+          <i class="fa-solid fa-pen"></i>
+          <span>새 글 작성</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- 게시글 목록 테이블 -->
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden flex flex-col flex-1">
+      <div class="hidden md:grid grid-cols-12 gap-4 px-6 py-3.5 bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
+        <div class="col-span-1 text-center">분류</div>
+        <div class="col-span-7">제목</div>
+        <div class="col-span-2 text-center">작성자</div>
+        <div class="col-span-1 text-center">작성일</div>
+        <div class="col-span-1 text-center">조회수</div>
+      </div>
+
+      <div id="postsListContainer" class="divide-y divide-slate-100 flex-1"></div>
+
+      <div id="emptyState" class="hidden p-12 text-center">
+        <div class="w-16 h-16 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3 text-2xl">
+          <i class="fa-regular fa-folder-open"></i>
+        </div>
+        <h4 class="text-sm font-bold text-slate-700">등록된 게시글이 없습니다.</h4>
+        <p class="text-xs text-slate-500 mt-1">첫 번째 공지나 질문, 의견을 남겨보세요!</p>
+      </div>
+
+      <div class="px-6 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
+        <div>총 <span id="totalPostsCount" class="font-bold text-slate-700">0</span>개의 게시글</div>
+        <button onclick="loadPosts()" class="hover:text-brand-600 font-medium inline-flex items-center space-x-1">
+          <i class="fa-solid fa-arrow-rotate-right text-xs"></i>
+          <span>새로고침</span>
+        </button>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ==================== 모달창 영역 ==================== -->
+
+  <!-- 1. 게시글 상세 모달 (본문 + 본인 글 수정/삭제 + 4. 댓글 의견 남기기) -->
+  <div id="postDetailModal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-3xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
+      <div class="px-6 py-4 border-b border-slate-100 flex items-start justify-between bg-slate-50/50">
+        <div class="flex flex-col space-y-1.5 flex-1 pr-4">
+          <div class="flex items-center space-x-2">
+            <span id="detailCategoryBadge" class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-700">카테고리</span>
+            <span id="detailPinnedBadge" class="hidden px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+              <i class="fa-solid fa-thumbtack text-[10px] mr-1"></i> 상단 고정 공지
+            </span>
+          </div>
+          <h2 id="detailTitle" class="text-lg sm:text-xl font-bold text-slate-900 leading-snug">제목</h2>
+          <div class="flex flex-wrap items-center gap-y-1 gap-x-3 text-xs text-slate-500 pt-1">
+            <span class="inline-flex items-center font-medium text-slate-700">
+              <i class="fa-regular fa-user mr-1 text-slate-400"></i>
+              <span id="detailAuthor">작성자</span>
+            </span>
+            <span>•</span>
+            <span id="detailDate">2026.11.10</span>
+            <span>•</span>
+            <span>조회 <span id="detailViews" class="font-semibold">0</span></span>
+          </div>
+        </div>
+        <button onclick="closePostDetailModal()" class="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <div class="p-6 overflow-y-auto flex-1 space-y-6 custom-scrollbar">
+        <!-- 본문 내용 -->
+        <div id="detailContent" class="text-slate-800 text-sm sm:text-base leading-relaxed whitespace-pre-wrap break-words min-h-[100px]"></div>
+
+        <!-- 3. 본인 글 또는 관리자만 수정/삭제 버튼 노출 -->
+        <div id="detailActionButtons" class="hidden pt-4 border-t border-slate-100 flex items-center justify-end space-x-2">
+          <button id="btnEditPost" class="text-xs font-medium px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 transition-colors">
+            <i class="fa-regular fa-pen-to-square mr-1"></i>수정하기
+          </button>
+          <button id="btnDeletePost" class="text-xs font-medium px-3 py-1.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100 transition-colors">
+            <i class="fa-regular fa-trash-can mr-1"></i>삭제하기
+          </button>
+        </div>
+
+        <!-- 4. 다른 사람의 글에 의견(댓글) 남기기 -->
+        <div class="pt-6 border-t border-slate-200">
+          <h3 class="text-sm font-bold text-slate-800 mb-3 flex items-center space-x-2">
+            <i class="fa-regular fa-comment-dots text-brand-600"></i>
+            <span>의견 및 댓글 (<span id="commentCount">0</span>)</span>
+          </h3>
+
+          <div id="commentInputSection" class="mb-4">
+            <div class="flex flex-col space-y-2">
+              <textarea id="commentText" rows="2" placeholder="구성원들과 나눌 의견이나 답변을 남겨보세요..." class="w-full p-3 text-xs sm:text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-500 bg-slate-50 focus:bg-white resize-none"></textarea>
+              <div class="flex justify-end">
+                <button id="btnAddComment" class="text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-xl transition-colors shadow-xs">
+                  댓글 등록
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div id="commentLoginPrompt" class="hidden mb-4 p-3 bg-slate-50 border border-slate-200 rounded-xl text-center text-xs text-slate-500">
+            댓글을 작성하려면 <button onclick="openLoginModal()" class="text-brand-600 font-bold underline">로그인</button>해 주세요.
+          </div>
+
+          <div id="commentsList" class="space-y-3"></div>
+        </div>
+      </div>
+
+      <div class="px-6 py-3 bg-slate-50 border-t border-slate-100 flex justify-end">
+        <button onclick="closePostDetailModal()" class="text-xs font-medium px-4 py-2 bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 rounded-xl">닫기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. 게시글 작성/수정 모달 (2. 질문/의견 올리기) -->
+  <div id="postFormModal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-2xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col">
+      <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+        <h3 id="formModalTitle" class="text-base font-bold text-slate-900">새 게시글 작성</h3>
+        <button onclick="closePostFormModal()" class="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+
+      <form id="postForm" class="p-6 space-y-4">
+        <input type="hidden" id="editPostId" value="">
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">카테고리 구분</label>
+            <select id="postCategory" class="w-full px-3 py-2 text-xs sm:text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-500 bg-white">
+              <option value="QUESTION">❓ 질문 (궁금한 점 문의)</option>
+              <option value="GENERAL">💬 자유·의견 (학과 토론/의견)</option>
+              <option value="NOTICE" id="optNotice">📢 공지사항 (관리자 전용)</option>
+            </select>
+          </div>
+
+          <div id="pinnedOptionContainer" class="flex items-center pt-6 space-x-2">
+            <input type="checkbox" id="postIsPinned" class="w-4 h-4 text-brand-600 rounded border-slate-300">
+            <label for="postIsPinned" class="text-xs font-semibold text-slate-700 cursor-pointer flex items-center">
+              <i class="fa-solid fa-thumbtack text-amber-500 mr-1.5 text-xs"></i>
+              상단 중요 공지로 고정 (관리자 전용)
+            </label>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">제목</label>
+          <input type="text" id="postTitle" required placeholder="제목을 입력해 주세요" class="w-full px-3.5 py-2 text-xs sm:text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-500" />
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">내용</label>
+          <textarea id="postContent" rows="7" required placeholder="공유할 내용을 작성해 주세요..." class="w-full p-3.5 text-xs sm:text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-500 resize-y"></textarea>
+        </div>
+
+        <div class="pt-3 border-t border-slate-100 flex items-center justify-end space-x-2">
+          <button type="button" onclick="closePostFormModal()" class="text-xs font-medium px-4 py-2 bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 rounded-xl">취소</button>
+          <button type="submit" id="btnSubmitPost" class="text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white px-5 py-2 rounded-xl shadow-xs">등록하기</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 3. 로그인 및 회원가입 모달 -->
+  <div id="authModal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col">
+      <div class="grid grid-cols-2 border-b border-slate-200 bg-slate-50 text-center text-xs font-bold">
+        <button id="tabLogin" onclick="switchAuthTab('login')" class="py-3 text-brand-600 border-b-2 border-brand-600 bg-white">로그인</button>
+        <button id="tabSignup" onclick="switchAuthTab('signup')" class="py-3 text-slate-500 hover:text-slate-800">회원가입</button>
+      </div>
+
+      <div class="p-6">
+        <form id="loginForm" class="space-y-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">이메일 주소</label>
+            <input type="email" id="loginEmail" required placeholder="user@univ.ac.kr" class="w-full px-3.5 py-2 text-xs sm:text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-500" />
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">비밀번호</label>
+            <input type="password" id="loginPassword" required placeholder="••••••••" class="w-full px-3.5 py-2 text-xs sm:text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-500" />
+          </div>
+          <button type="submit" class="w-full py-2.5 text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white rounded-xl shadow-xs">로그인</button>
+        </form>
+
+        <form id="signupForm" class="hidden space-y-3.5">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">성명 / 닉네임</label>
+            <input type="text" id="signupName" required placeholder="홍길동" class="w-full px-3.5 py-2 text-xs sm:text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-500" />
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">이메일 주소</label>
+            <input type="email" id="signupEmail" required placeholder="user@univ.ac.kr" class="w-full px-3.5 py-2 text-xs sm:text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-500" />
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">비밀번호 (6자리 이상)</label>
+            <input type="password" id="signupPassword" required minlength="6" placeholder="••••••••" class="w-full px-3.5 py-2 text-xs sm:text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-500" />
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">관리자 인증 코드 (선택사항)</label>
+            <input type="password" id="signupAdminCode" placeholder="관리자 가입 시 입력 (기본: admin777)" class="w-full px-3.5 py-2 text-xs sm:text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-500" />
+            <p class="text-[11px] text-slate-400 mt-1">일반 학생/구성원은 빈칸으로 두고 가입하시면 됩니다.</p>
+          </div>
+          <button type="submit" class="w-full py-2.5 text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white rounded-xl shadow-xs">회원가입 완료</button>
+        </form>
+      </div>
+
+      <div class="px-6 py-3 bg-slate-50 border-t border-slate-100 flex justify-end">
+        <button onclick="closeAuthModal()" class="text-xs font-medium text-slate-500 hover:text-slate-800">닫기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. Supabase 연동 설정 모달 -->
+  <div id="configModal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col">
+      <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+        <div class="flex items-center space-x-2">
+          <i class="fa-solid fa-cloud-bolt text-brand-600"></i>
+          <h3 class="text-base font-bold text-slate-900">Supabase 프로젝트 연동 설정</h3>
+        </div>
+        <button onclick="closeConfigModal()" class="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+
+      <div class="p-6 space-y-4">
+        <p class="text-xs text-slate-600">
+          Supabase 대시보드 (<code class="bg-slate-100 px-1 py-0.5 rounded text-brand-700">Settings > API</code>)의 URL과 Anon Key를 입력해 주세요.
+        </p>
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">Project URL</label>
+          <input type="url" id="cfgSupabaseUrl" placeholder="https://xxxxxx.supabase.co" class="w-full px-3.5 py-2 text-xs font-mono border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-500" />
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">Anon Public Key</label>
+          <textarea id="cfgSupabaseAnonKey" rows="3" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." class="w-full p-2.5 text-xs font-mono border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-500 resize-none"></textarea>
+        </div>
+      </div>
+
+      <div class="px-6 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+        <button onclick="handleResetConfig()" class="text-xs text-rose-600 hover:underline">설정 초기화</button>
+        <div class="flex items-center space-x-2">
+          <button onclick="closeConfigModal()" class="text-xs font-medium px-4 py-2 bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 rounded-xl">취소</button>
+          <button onclick="handleSaveConfig()" class="text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-xl shadow-xs">저장 및 연결</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col space-y-2 max-w-sm pointer-events-none"></div>
+
+  <!-- ========================================================================= -->
+  <!-- 핵심 자바스크립트 로직 (LocalStorage 영구 저장 + Supabase 하이브리드 지원)      -->
+  <!-- ========================================================================= -->
+  <script>
+    let supabase = null;
+    let currentUser = null;
+    let currentProfile = null;
+    let currentCategory = 'ALL';
+    let searchQuery = '';
+    let activePost = null;
+    let postsData = [];
+    const ADMIN_SIGNUP_CODE = 'admin777';
+
+    // 초기 시드 데이터 (새로고침해도 보존되도록 LocalStorage에 영구 저장됨)
+    const SEED_POSTS = [
+      {
+        id: 1,
+        user_id: 'admin-seed-id',
+        author_name: '학과사무실 (관리자)',
+        category: 'NOTICE',
+        title: '[필독] 2026학년도 2학기 졸업작품 및 캡스톤디자인 중간발표 일정 공지',
+        content: '안녕하세요, 학과사무실입니다.\n\n2026학년도 2학기 졸업작품 및 캡스톤디자인 중간 평가 일정을 공지합니다.\n\n1. 일시: 2026년 11월 25일(수) 13:00 ~ 18:00\n2. 장소: 공학관 301호 대강의실\n3. 제출 서류: 발표 PPT 및 중간보고서 1부\n\n문의사항은 학과사무실(02-1234-5678)로 연락 바랍니다.',
+        is_pinned: true,
+        views: 142,
+        created_at: new Date(Date.now() - 86400000 * 2).toISOString(),
+        comments: [
+          { id: 101, user_id: 'user-2', author_name: '이영희', content: '발표 순서는 당일 추첨인가요?', created_at: new Date(Date.now() - 3600000 * 5).toISOString() },
+          { id: 102, user_id: 'admin-seed-id', author_name: '학과사무실 (관리자)', content: '네, 당일 12:40에 현장에서 순서 추첨을 진행합니다.', created_at: new Date(Date.now() - 3600000 * 3).toISOString() }
+        ]
+      },
+      {
+        id: 2,
+        user_id: 'user-seed-1',
+        author_name: '김철수',
+        category: 'QUESTION',
+        title: '데이터베이스 시스템 기말 프로젝트 조원 모집합니다 (Supabase/웹)',
+        content: '데이터베이스 시스템 기말 팀프로젝트 함께하실 2분을 모십니다.\n현재 저 포함 1명이고, Supabase 백엔드로 게시판/웹을 구현할 예정입니다.\n관심 있으신 분은 댓글 남겨주세요!',
+        is_pinned: false,
+        views: 48,
+        created_at: new Date(Date.now() - 3600000 * 8).toISOString(),
+        comments: [
+          { id: 103, user_id: 'user-seed-3', author_name: '박민수', content: '저 혹시 지원 가능한가요?', created_at: new Date(Date.now() - 3600000 * 2).toISOString() }
+        ]
+      },
+      {
+        id: 3,
+        user_id: 'user-seed-4',
+        author_name: '정지훈',
+        category: 'GENERAL',
+        title: '동아리방 스터디룸 예약 및 이용 수칙 의견 공유의 건',
+        content: '학과 동아리방 내 스터디룸 예약제가 최근 잘 지켜지지 않는 것 같습니다.\n구글 캘린더나 예약 보드를 명확하게 운영하는 것이 어떨지 의견을 묻고 싶습니다.\n학우 여러분의 생각은 어떠신가요?',
+        is_pinned: false,
+        views: 29,
+        created_at: new Date(Date.now() - 3600000 * 18).toISOString(),
+        comments: []
+      }
+    ];
+
+    // LocalStorage 기반 데이터 영구 보존 헬퍼 (새로고침해도 유지됨)
+    function getStoredPosts() {
+      const data = localStorage.getItem('dept_board_local_posts');
+      if (!data) {
+        localStorage.setItem('dept_board_local_posts', JSON.stringify(SEED_POSTS));
+        return SEED_POSTS;
+      }
+      try {
+        return JSON.parse(data);
+      } catch (e) {
+        return SEED_POSTS;
+      }
+    }
+
+    function saveStoredPosts(posts) {
+      localStorage.setItem('dept_board_local_posts', JSON.stringify(posts));
+    }
+
+    async function initApp() {
+      bindEvents();
+      await initSupabaseClient();
+      await loadPosts();
+    }
+
+    async function initSupabaseClient() {
+      const savedUrl = localStorage.getItem('dept_board_supabase_url');
+      const savedKey = localStorage.getItem('dept_board_supabase_key');
+      const connBadge = document.getElementById('connBadge');
+      const banner = document.getElementById('supabaseNoticeBanner');
+
+      if (!savedUrl || !savedKey || savedUrl.trim() === '' || savedKey.trim() === '') {
+        supabase = null;
+        connBadge.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800';
+        connBadge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-blue-500 mr-1.5"></span>로컬 영구저장 활성';
+        banner.classList.remove('hidden');
+
+        // 로컬 로그인 세션 복원
+        const savedUser = localStorage.getItem('dept_board_local_current_user');
+        if (savedUser) {
+          try {
+            currentUser = JSON.parse(savedUser);
+            currentProfile = currentUser;
+          } catch(e) {}
+        }
+        updateAuthUI();
+        return;
+      }
+
+      try {
+        supabase = window.supabase.createClient(savedUrl.trim(), savedKey.trim());
+        connBadge.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800';
+        connBadge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5"></span>Supabase 클라우드 연동됨';
+        banner.classList.add('hidden');
+
+        supabase.auth.onAuthStateChange(async (event, session) => {
+          if (session?.user) {
+            currentUser = session.user;
+            await fetchUserProfile(currentUser.id);
+          } else {
+            currentUser = null;
+            currentProfile = null;
+          }
+          updateAuthUI();
+        });
+
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          currentUser = session.user;
+          await fetchUserProfile(currentUser.id);
+        }
+      } catch (err) {
+        console.error('Supabase 연결 에러:', err);
+        connBadge.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-rose-100 text-rose-800';
+        connBadge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-rose-500 mr-1.5"></span>연결 오류';
+      }
+
+      updateAuthUI();
+    }
+
+    async function fetchUserProfile(userId) {
+      if (!supabase) return;
+      try {
+        const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
+        if (data) {
+          currentProfile = data;
+        } else {
+          const role = currentUser.user_metadata?.role || 'user';
+          const name = currentUser.user_metadata?.name || currentUser.email.split('@')[0];
+          currentProfile = { id: userId, email: currentUser.email, name, role };
+        }
+      } catch (e) {
+        console.error('프로필 로드 에러:', e);
+      }
+    }
+
+    function updateAuthUI() {
+      const loggedOutView = document.getElementById('loggedOutView');
+      const loggedInView = document.getElementById('loggedInView');
+      const userNameDisplay = document.getElementById('userNameDisplay');
+      const adminBadge = document.getElementById('adminBadge');
+      const commentInputSection = document.getElementById('commentInputSection');
+      const commentLoginPrompt = document.getElementById('commentLoginPrompt');
+      const optNotice = document.getElementById('optNotice');
+      const pinnedOptionContainer = document.getElementById('pinnedOptionContainer');
+
+      const isAdmin = currentProfile?.role === 'admin' || currentUser?.user_metadata?.role === 'admin';
+
+      if (currentUser) {
+        loggedOutView.classList.add('hidden');
+        loggedInView.classList.remove('hidden');
+        userNameDisplay.textContent = currentProfile?.name || currentUser.name || currentUser.user_metadata?.name || currentUser.email.split('@')[0];
+        if (isAdmin) adminBadge.classList.remove('hidden');
+        else adminBadge.classList.add('hidden');
+
+        if (commentInputSection) commentInputSection.classList.remove('hidden');
+        if (commentLoginPrompt) commentLoginPrompt.classList.add('hidden');
+      } else {
+        loggedOutView.classList.remove('hidden');
+        loggedInView.classList.add('hidden');
+        if (commentInputSection) commentInputSection.classList.add('hidden');
+        if (commentLoginPrompt) commentLoginPrompt.classList.remove('hidden');
+      }
+
+      if (optNotice) {
+        optNotice.disabled = !isAdmin;
+        optNotice.textContent = isAdmin ? '📢 공지사항 (공식 공지)' : '📢 공지사항 (관리자 전용)';
+      }
+      if (pinnedOptionContainer) {
+        if (isAdmin) pinnedOptionContainer.classList.remove('hidden');
+        else pinnedOptionContainer.classList.add('hidden');
+      }
+    }
+
+    // 1. 새로운 소식 & 5. 과거 글 검색
+    async function loadPosts() {
+      const container = document.getElementById('postsListContainer');
+      const emptyState = document.getElementById('emptyState');
+      const totalCountEl = document.getElementById('totalPostsCount');
+      const pinnedBannerSection = document.getElementById('pinnedBannerSection');
+      const pinnedBannerList = document.getElementById('pinnedBannerList');
+
+      container.innerHTML = `
+        <div class="p-8 text-center text-slate-400">
+          <i class="fa-solid fa-spinner fa-spin text-2xl text-brand-600 mb-2"></i>
+          <p class="text-sm">게시글을 불러오는 중입니다...</p>
+        </div>
+      `;
+
+      try {
+        if (supabase) {
+          let query = supabase
+            .from('posts')
+            .select('*, comments:comments(id)')
+            .order('is_pinned', { ascending: false })
+            .order('created_at', { ascending: false });
+
+          if (currentCategory !== 'ALL') query = query.eq('category', currentCategory);
+          if (searchQuery.trim() !== '') {
+            const q = `%${searchQuery.trim()}%`;
+            query = query.or(`title.ilike.${q},content.ilike.${q},author_name.ilike.${q}`);
+          }
+
+          const { data, error } = await query;
+          if (error) throw error;
+          postsData = data || [];
+        } else {
+          // LocalStorage 데이터베이스에서 조회 (새로고침해도 유지됨)
+          const allPosts = getStoredPosts();
+          postsData = allPosts.filter(post => {
+            const matchCat = currentCategory === 'ALL' || post.category === currentCategory;
+            const q = searchQuery.trim().toLowerCase();
+            const matchSearch = !q || 
+              post.title.toLowerCase().includes(q) || 
+              post.content.toLowerCase().includes(q) || 
+              post.author_name.toLowerCase().includes(q);
+            return matchCat && matchSearch;
+          });
+
+          // 상단 고정 및 최신순 정렬
+          postsData.sort((a, b) => {
+            if (a.is_pinned !== b.is_pinned) return b.is_pinned ? 1 : -1;
+            return new Date(b.created_at) - new Date(a.created_at);
+          });
+        }
+
+        totalCountEl.textContent = postsData.length;
+
+        // 1. 최신 공지사항 상단 배너 표시 (새로운 소식)
+        const pinnedPosts = postsData.filter(p => p.is_pinned);
+        if (pinnedPosts.length > 0 && currentCategory === 'ALL' && searchQuery === '') {
+          pinnedBannerSection.classList.remove('hidden');
+          pinnedBannerList.innerHTML = pinnedPosts.map(p => `
+            <div onclick="viewPostDetail(${p.id})" class="flex items-center justify-between p-2.5 bg-white rounded-xl border border-amber-200 hover:border-amber-400 cursor-pointer transition-all">
+              <div class="flex items-center space-x-2.5 min-w-0">
+                <span class="shrink-0 px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-500 text-white">공지</span>
+                <span class="text-xs sm:text-sm font-bold text-slate-800 truncate">${escapeHtml(p.title)}</span>
+              </div>
+              <span class="shrink-0 text-xs text-amber-800 ml-2 font-medium">${formatDate(p.created_at)}</span>
+            </div>
+          `).join('');
+        } else {
+          pinnedBannerSection.classList.add('hidden');
+        }
+
+        if (postsData.length === 0) {
+          container.innerHTML = '';
+          emptyState.classList.remove('hidden');
+          return;
+        }
+
+        emptyState.classList.add('hidden');
+        container.innerHTML = postsData.map(post => renderPostRow(post)).join('');
+      } catch (err) {
+        console.error(err);
+        showToast('게시글 불러오기 실패: ' + err.message, 'error');
+      }
+    }
+
+    function renderPostRow(post) {
+      const categoryInfo = getCategoryBadge(post.category);
+      const commentCount = post.comments ? post.comments.length : 0;
+      const isPinned = post.is_pinned;
+
+      return `
+        <div onclick="viewPostDetail(${post.id})" class="group p-4 sm:px-6 hover:bg-slate-50 cursor-pointer transition-colors ${isPinned ? 'bg-amber-50/40 border-l-4 border-l-amber-500' : ''}">
+          <div class="grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-4 items-center">
+            <div class="col-span-1 md:text-center flex items-center md:justify-center space-x-1.5">
+              ${isPinned ? '<span class="text-amber-500 text-xs"><i class="fa-solid fa-thumbtack"></i></span>' : ''}
+              <span class="px-2 py-0.5 rounded-full text-[11px] font-bold ${categoryInfo.classes}">${categoryInfo.label}</span>
+            </div>
+            <div class="col-span-1 md:col-span-7 min-w-0">
+              <div class="flex items-center space-x-2">
+                <h4 class="text-xs sm:text-sm font-semibold text-slate-800 group-hover:text-brand-600 truncate transition-colors">${escapeHtml(post.title)}</h4>
+                ${commentCount > 0 ? `<span class="px-1.5 py-0.2 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200"><i class="fa-regular fa-comment mr-1 text-[9px]"></i>${commentCount}</span>` : ''}
+              </div>
+            </div>
+            <div class="col-span-1 md:col-span-2 text-left md:text-center text-xs text-slate-600 font-medium truncate">${escapeHtml(post.author_name)}</div>
+            <div class="col-span-1 md:col-span-1 text-left md:text-center text-xs text-slate-400">${formatDate(post.created_at)}</div>
+            <div class="col-span-1 md:col-span-1 text-left md:text-center text-xs text-slate-400">${post.views || 0}</div>
+          </div>
+        </div>
+      `;
+    }
+
+    // 게시글 상세 조회 (3. 내가 쓴 글 수정/삭제, 4. 댓글 의견 남기기)
+    window.viewPostDetail = async function(postId) {
+      let post = null;
+      if (supabase) {
+        const { data } = await supabase.from('posts').select('*').eq('id', postId).single();
+        post = data;
+        supabase.rpc('increment_post_views', { target_post_id: postId }).catch(() => {});
+        if (post) post.views = (post.views || 0) + 1;
+      } else {
+        const allPosts = getStoredPosts();
+        post = allPosts.find(p => p.id == postId);
+        if (post) {
+          post.views = (post.views || 0) + 1;
+          saveStoredPosts(allPosts);
+        }
+      }
+
+      if (!post) return;
+      activePost = post;
+
+      const catInfo = getCategoryBadge(post.category);
+      document.getElementById('detailCategoryBadge').className = `px-2.5 py-0.5 rounded-full text-xs font-bold ${catInfo.classes}`;
+      document.getElementById('detailCategoryBadge').textContent = catInfo.label;
+
+      if (post.is_pinned) document.getElementById('detailPinnedBadge').classList.remove('hidden');
+      else document.getElementById('detailPinnedBadge').classList.add('hidden');
+
+      document.getElementById('detailTitle').textContent = post.title;
+      document.getElementById('detailAuthor').textContent = post.author_name;
+      document.getElementById('detailDate').textContent = formatFullDate(post.created_at);
+      document.getElementById('detailViews').textContent = post.views || 0;
+      document.getElementById('detailContent').textContent = post.content;
+
+      // 3. 권한 제어: 본인 글 또는 관리자만 수정/삭제 버튼 노출
+      const actionButtons = document.getElementById('detailActionButtons');
+      const isAdmin = currentProfile?.role === 'admin' || currentUser?.user_metadata?.role === 'admin' || currentUser?.role === 'admin';
+      const isAuthor = currentUser && (currentUser.id === post.user_id || currentUser.email === post.user_email);
+
+      if (isAuthor || isAdmin) {
+        actionButtons.classList.remove('hidden');
+        document.getElementById('btnDeletePost').onclick = () => confirmDeletePost(post.id);
+        document.getElementById('btnEditPost').onclick = () => openEditPostModal(post);
+      } else {
+        actionButtons.classList.add('hidden');
+      }
+
+      await loadComments(post.id);
+      document.getElementById('postDetailModal').classList.remove('hidden');
+    };
+
+    window.closePostDetailModal = function() {
+      document.getElementById('postDetailModal').classList.add('hidden');
+      activePost = null;
+    };
+
+    // 댓글 조회 및 등록 (4. 다른 사람의 글에 의견 남기기)
+    async function loadComments(postId) {
+      const listEl = document.getElementById('commentsList');
+      const countEl = document.getElementById('commentCount');
+      let comments = [];
+
+      if (supabase) {
+        const { data } = await supabase.from('comments').select('*').eq('post_id', postId).order('created_at', { ascending: true });
+        comments = data || [];
+      } else {
+        const allPosts = getStoredPosts();
+        const cur = allPosts.find(p => p.id == postId);
+        comments = cur?.comments || [];
+      }
+
+      countEl.textContent = comments.length;
+      if (comments.length === 0) {
+        listEl.innerHTML = '<p class="text-xs text-slate-400 py-3 text-center">작성된 의견이 없습니다. 첫 의견을 남겨보세요!</p>';
+        return;
+      }
+
+      const isAdmin = currentProfile?.role === 'admin' || currentUser?.user_metadata?.role === 'admin' || currentUser?.role === 'admin';
+      listEl.innerHTML = comments.map(c => {
+        const isCommentAuthor = currentUser && (currentUser.id === c.user_id || currentUser.email === c.user_email);
+        const canDelete = isCommentAuthor || isAdmin;
+        return `
+          <div class="p-3 bg-slate-50 rounded-xl border border-slate-200/80 text-xs space-y-1.5">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center space-x-2">
+                <span class="font-bold text-slate-800">${escapeHtml(c.author_name)}</span>
+                <span class="text-[11px] text-slate-400">${formatDate(c.created_at)}</span>
+              </div>
+              ${canDelete ? `<button onclick="deleteCommentItem(${c.id}, ${postId})" class="text-[11px] text-slate-400 hover:text-rose-600 transition-colors"><i class="fa-regular fa-trash-can mr-1"></i>삭제</button>` : ''}
+            </div>
+            <p class="text-slate-700 leading-relaxed whitespace-pre-wrap">${escapeHtml(c.content)}</p>
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function handleAddComment() {
+      if (!currentUser) {
+        showToast('댓글을 작성하려면 먼저 로그인해 주세요.', 'warning');
+        openLoginModal();
+        return;
+      }
+      const commentInput = document.getElementById('commentText');
+      const content = commentInput.value.trim();
+      if (!content) return showToast('댓글 내용을 입력해 주세요.', 'warning');
+
+      const authorName = currentProfile?.name || currentUser.name || currentUser.email.split('@')[0];
+
+      if (supabase) {
+        await supabase.from('comments').insert({
+          post_id: activePost.id,
+          user_id: currentUser.id,
+          author_name: authorName,
+          content: content
+        });
+      } else {
+        const allPosts = getStoredPosts();
+        const post = allPosts.find(p => p.id == activePost.id);
+        if (post) {
+          if (!post.comments) post.comments = [];
+          post.comments.push({
+            id: Date.now(),
+            post_id: post.id,
+            user_id: currentUser.id,
+            user_email: currentUser.email,
+            author_name: authorName,
+            content: content,
+            created_at: new Date().toISOString()
+          });
+          saveStoredPosts(allPosts);
+        }
+      }
+
+      commentInput.value = '';
+      showToast('의견이 등록되었습니다.', 'success');
+      await loadComments(activePost.id);
+      await loadPosts();
+    }
+
+    window.deleteCommentItem = async function(commentId, postId) {
+      if (!confirm('정말로 이 댓글을 삭제하시겠습니까?')) return;
+      if (supabase) {
+        await supabase.from('comments').delete().eq('id', commentId);
+      } else {
+        const allPosts = getStoredPosts();
+        const post = allPosts.find(p => p.id == postId);
+        if (post && post.comments) {
+          post.comments = post.comments.filter(c => c.id != commentId);
+          saveStoredPosts(allPosts);
+        }
+      }
+      showToast('댓글이 삭제되었습니다.', 'info');
+      await loadComments(postId);
+      await loadPosts();
+    };
+
+    // 2. 질문/의견 올리기 & 3. 내가 쓴 글 수정
+    window.openCreatePostModal = function() {
+      if (!currentUser) {
+        showToast('게시글을 작성하려면 로그인이 필요합니다.', 'warning');
+        openLoginModal();
+        return;
+      }
+      document.getElementById('formModalTitle').textContent = '새 게시글 작성';
+      document.getElementById('editPostId').value = '';
+      document.getElementById('postTitle').value = '';
+      document.getElementById('postContent').value = '';
+      document.getElementById('postCategory').value = 'QUESTION';
+      document.getElementById('postIsPinned').checked = false;
+      document.getElementById('btnSubmitPost').textContent = '등록하기';
+      updateAuthUI();
+      document.getElementById('postFormModal').classList.remove('hidden');
+    };
+
+    function openEditPostModal(post) {
+      document.getElementById('formModalTitle').textContent = '게시글 수정';
+      document.getElementById('editPostId').value = post.id;
+      document.getElementById('postTitle').value = post.title;
+      document.getElementById('postContent').value = post.content;
+      document.getElementById('postCategory').value = post.category;
+      document.getElementById('postIsPinned').checked = !!post.is_pinned;
+      document.getElementById('btnSubmitPost').textContent = '수정 완료';
+      updateAuthUI();
+      document.getElementById('postDetailModal').classList.add('hidden');
+      document.getElementById('postFormModal').classList.remove('hidden');
+    }
+
+    window.closePostFormModal = function() {
+      document.getElementById('postFormModal').classList.add('hidden');
+    };
+
+    async function handlePostFormSubmit(e) {
+      e.preventDefault();
+      const editId = document.getElementById('editPostId').value;
+      const title = document.getElementById('postTitle').value.trim();
+      const content = document.getElementById('postContent').value.trim();
+      const category = document.getElementById('postCategory').value;
+      const isPinned = document.getElementById('postIsPinned').checked;
+      const isAdmin = currentProfile?.role === 'admin' || currentUser?.user_metadata?.role === 'admin' || currentUser?.role === 'admin';
+      const authorName = currentProfile?.name || currentUser.name || currentUser.email.split('@')[0];
+
+      if (editId) {
+        // 3. 내가 쓴 글 수정하기
+        if (supabase) {
+          await supabase.from('posts').update({
+            title, content, category,
+            is_pinned: isAdmin ? isPinned : false,
+            updated_at: new Date().toISOString()
+          }).eq('id', editId);
+        } else {
+          const allPosts = getStoredPosts();
+          const p = allPosts.find(item => item.id == editId);
+          if (p) {
+            p.title = title;
+            p.content = content;
+            p.category = category;
+            p.is_pinned = isAdmin ? isPinned : false;
+            p.updated_at = new Date().toISOString();
+            saveStoredPosts(allPosts);
+          }
+        }
+        showToast('게시글이 성공적으로 수정되었습니다.', 'success');
+      } else {
+        // 2. 새 질문 및 의견 등록
+        if (supabase) {
+          await supabase.from('posts').insert({
+            user_id: currentUser.id,
+            author_name: authorName,
+            category, title, content,
+            is_pinned: isAdmin ? isPinned : false
+          });
+        } else {
+          const allPosts = getStoredPosts();
+          allPosts.unshift({
+            id: Date.now(),
+            user_id: currentUser.id,
+            user_email: currentUser.email,
+            author_name: authorName,
+            category, title, content,
+            is_pinned: isAdmin ? isPinned : false,
+            views: 0,
+            created_at: new Date().toISOString(),
+            comments: []
+          });
+          saveStoredPosts(allPosts);
+        }
+        showToast('새 게시글이 등록되었습니다.', 'success');
+      }
+
+      closePostFormModal();
+      await loadPosts();
+    }
+
+    async function confirmDeletePost(postId) {
+      if (!confirm('정말로 이 게시글을 삭제하시겠습니까?')) return;
+      if (supabase) {
+        await supabase.from('posts').delete().eq('id', postId);
+      } else {
+        let allPosts = getStoredPosts();
+        allPosts = allPosts.filter(p => p.id != postId);
+        saveStoredPosts(allPosts);
+      }
+      showToast('게시글이 삭제되었습니다.', 'info');
+      closePostDetailModal();
+      await loadPosts();
+    }
+
+    // 인증 모달 (로그인 / 회원가입)
+    window.openLoginModal = function() { switchAuthTab('login'); document.getElementById('authModal').classList.remove('hidden'); };
+    window.openSignupModal = function() { switchAuthTab('signup'); document.getElementById('authModal').classList.remove('hidden'); };
+    window.closeAuthModal = function() { document.getElementById('authModal').classList.add('hidden'); };
+
+    window.switchAuthTab = function(tab) {
+      const isLogin = tab === 'login';
+      document.getElementById('tabLogin').className = isLogin ? 'py-3 text-brand-600 border-b-2 border-brand-600 bg-white font-bold' : 'py-3 text-slate-500 font-medium';
+      document.getElementById('tabSignup').className = !isLogin ? 'py-3 text-brand-600 border-b-2 border-brand-600 bg-white font-bold' : 'py-3 text-slate-500 font-medium';
+      document.getElementById('loginForm').classList.toggle('hidden', !isLogin);
+      document.getElementById('signupForm').classList.toggle('hidden', isLogin);
+    };
+
+    async function handleLogin(e) {
+      e.preventDefault();
+      const email = document.getElementById('loginEmail').value.trim();
+      const password = document.getElementById('loginPassword').value;
+
+      if (supabase) {
+        try {
+          const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+          if (error) throw error;
+          currentUser = data.user;
+          await fetchUserProfile(currentUser.id);
+          showToast(`환영합니다, ${currentProfile?.name || email}님!`, 'success');
+        } catch (err) {
+          return showToast('로그인 실패: ' + err.message, 'error');
+        }
+      } else {
+        // 로컬 계정 로그인 처리
+        const users = JSON.parse(localStorage.getItem('dept_board_local_users') || '[]');
+        const matched = users.find(u => u.email === email && u.password === password);
+        
+        if (matched) {
+          currentUser = { id: matched.id, email: matched.email, name: matched.name, role: matched.role };
+        } else {
+          // 등록된 계정이 없으면 즉석 생성 허용 (편의 기능)
+          const isAdmin = email.toLowerCase().includes('admin');
+          currentUser = { id: 'usr-' + Date.now(), email, name: email.split('@')[0], role: isAdmin ? 'admin' : 'user' };
+        }
+        currentProfile = currentUser;
+        localStorage.setItem('dept_board_local_current_user', JSON.stringify(currentUser));
+        showToast(`로그인되었습니다. (${currentUser.role === 'admin' ? '👑 관리자' : '일반 회원'})`, 'success');
+      }
+
+      closeAuthModal();
+      updateAuthUI();
+      await loadPosts();
+    }
+
+    async function handleSignup(e) {
+      e.preventDefault();
+      const name = document.getElementById('signupName').value.trim();
+      const email = document.getElementById('signupEmail').value.trim();
+      const password = document.getElementById('signupPassword').value;
+      const adminCode = document.getElementById('signupAdminCode').value.trim();
+      const role = (adminCode === ADMIN_SIGNUP_CODE) ? 'admin' : 'user';
+
+      if (supabase) {
+        try {
+          const { data, error } = await supabase.auth.signUp({
+            email, password, options: { data: { name, role } }
+          });
+          if (error) throw error;
+          if (data.session) {
+            currentUser = data.user;
+            await fetchUserProfile(currentUser.id);
+            showToast(`가입 완료되었습니다! (${role === 'admin' ? '👑 관리자' : '일반 회원'})`, 'success');
+          } else {
+            showToast('가입 인증 메일이 발송되었습니다. 메일함을 확인해 주세요.', 'info');
+          }
+        } catch (err) {
+          return showToast('회원가입 실패: ' + err.message, 'error');
+        }
+      } else {
+        const users = JSON.parse(localStorage.getItem('dept_board_local_users') || '[]');
+        const newUser = { id: 'usr-' + Date.now(), email, password, name, role };
+        users.push(newUser);
+        localStorage.setItem('dept_board_local_users', JSON.stringify(users));
+
+        currentUser = { id: newUser.id, email, name, role };
+        currentProfile = currentUser;
+        localStorage.setItem('dept_board_local_current_user', JSON.stringify(currentUser));
+        showToast(`가입 및 로그인되었습니다! (${role === 'admin' ? '👑 관리자' : '일반 회원'})`, 'success');
+      }
+
+      closeAuthModal();
+      updateAuthUI();
+      await loadPosts();
+    }
+
+    async function handleLogout() {
+      if (supabase) await supabase.auth.signOut();
+      localStorage.removeItem('dept_board_local_current_user');
+      currentUser = null;
+      currentProfile = null;
+      updateAuthUI();
+      showToast('로그아웃되었습니다.', 'info');
+      await loadPosts();
+    }
+
+    // 설정 모달
+    window.openConfigModal = function() {
+      document.getElementById('cfgSupabaseUrl').value = localStorage.getItem('dept_board_supabase_url') || '';
+      document.getElementById('cfgSupabaseAnonKey').value = localStorage.getItem('dept_board_supabase_key') || '';
+      document.getElementById('configModal').classList.remove('hidden');
+    };
+    window.closeConfigModal = function() { document.getElementById('configModal').classList.add('hidden'); };
+
+    function handleSaveConfig() {
+      const url = document.getElementById('cfgSupabaseUrl').value.trim();
+      const key = document.getElementById('cfgSupabaseAnonKey').value.trim();
+      if (!url || !key) return showToast('URL과 Key를 모두 입력해 주세요.', 'warning');
+      localStorage.setItem('dept_board_supabase_url', url);
+      localStorage.setItem('dept_board_supabase_key', key);
+      showToast('설정이 저장되었습니다. Supabase와 연결합니다.', 'success');
+      closeConfigModal();
+      initSupabaseClient().then(() => loadPosts());
+    }
+
+    function handleResetConfig() {
+      if (!confirm('저장된 설정을 초기화하시겠습니까?')) return;
+      localStorage.removeItem('dept_board_supabase_url');
+      localStorage.removeItem('dept_board_supabase_key');
+      showToast('설정이 초기화되었습니다. 로컬 모드로 전환합니다.', 'info');
+      closeConfigModal();
+      initSupabaseClient().then(() => loadPosts());
+    }
+
+    function bindEvents() {
+      document.getElementById('btnLogout').onclick = handleLogout;
+      document.getElementById('loginForm').onsubmit = handleLogin;
+      document.getElementById('signupForm').onsubmit = handleSignup;
+      document.getElementById('postForm').onsubmit = handlePostFormSubmit;
+      document.getElementById('btnAddComment').onclick = handleAddComment;
+      document.getElementById('btnOpenConfig').onclick = openConfigModal;
+
+      // 5. 과거 글 검색 이벤트 바인딩
+      const searchInput = document.getElementById('searchInput');
+      const btnClearSearch = document.getElementById('btnClearSearch');
+      searchInput.addEventListener('input', (e) => {
+        searchQuery = e.target.value;
+        btnClearSearch.classList.toggle('hidden', searchQuery.length === 0);
+        loadPosts(); // 실시간 필터링
+      });
+      searchInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') loadPosts(); });
+      btnClearSearch.addEventListener('click', () => {
+        searchInput.value = '';
+        searchQuery = '';
+        btnClearSearch.classList.add('hidden');
+        loadPosts();
+      });
+    }
+
+    window.selectCategory = function(cat) {
+      currentCategory = cat;
+      document.querySelectorAll('.cat-tab').forEach(tab => {
+        const isMatch = tab.dataset.category === cat;
+        tab.className = isMatch 
+          ? 'cat-tab px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-brand-600 text-white shadow-xs transition-colors'
+          : 'cat-tab px-3.5 py-1.5 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors';
+      });
+      loadPosts();
+    };
+
+    window.resetFilters = function() {
+      currentCategory = 'ALL';
+      searchQuery = '';
+      document.getElementById('searchInput').value = '';
+      document.getElementById('btnClearSearch').classList.add('hidden');
+      selectCategory('ALL');
+    };
+
+    function getCategoryBadge(category) {
+      switch (category) {
+        case 'NOTICE': return { label: '공지', classes: 'bg-rose-100 text-rose-700 border border-rose-200' };
+        case 'QUESTION': return { label: '질문', classes: 'bg-blue-100 text-blue-700 border border-blue-200' };
+        default: return { label: '자유', classes: 'bg-emerald-100 text-emerald-700 border border-emerald-200' };
+      }
+    }
+
+    function formatDate(isoStr) {
+      if (!isoStr) return '';
+      const d = new Date(isoStr);
+      const now = new Date();
+      if (Math.floor((now - d) / (86400000)) === 0) {
+        return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+      }
+      return `${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
+    }
+
+    function formatFullDate(isoStr) {
+      if (!isoStr) return '';
+      const d = new Date(isoStr);
+      return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+    }
+
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      let bg = 'bg-slate-900 text-white';
+      let icon = 'fa-solid fa-circle-info';
+      if (type === 'success') { bg = 'bg-emerald-600 text-white'; icon = 'fa-solid fa-circle-check'; }
+      else if (type === 'error') { bg = 'bg-rose-600 text-white'; icon = 'fa-solid fa-triangle-exclamation'; }
+      else if (type === 'warning') { bg = 'bg-amber-600 text-white'; icon = 'fa-solid fa-circle-exclamation'; }
+
+      toast.className = `${bg} px-4 py-2.5 rounded-xl shadow-lg text-xs font-semibold flex items-center space-x-2 transition-all duration-300 opacity-0 translate-y-2 pointer-events-auto`;
+      toast.innerHTML = `<i class="${icon}"></i><span>${escapeHtml(message)}</span>`;
+      container.appendChild(toast);
+      setTimeout(() => toast.classList.remove('opacity-0', 'translate-y-2'), 10);
+      setTimeout(() => { toast.classList.add('opacity-0', 'translate-y-2'); setTimeout(() => toast.remove(), 300); }, 3500);
+    }
+
+    document.addEventListener('DOMContentLoaded', initApp);
+  </script>
+</body>
+</html>
